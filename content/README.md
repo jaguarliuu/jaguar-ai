@@ -13,6 +13,16 @@ All site content lives under `content/` and is committed through Git.
 - `content/site/about.mdx`
 - `content/site/lab.mdx`
 
+## Naming rules
+
+- All route-facing folder names and file names use English kebab-case.
+- The frontmatter `slug` must match the folder name or file name.
+- Course content must keep the exact three-level structure:
+  - `content/courses/<course>/index.mdx`
+  - `content/courses/<course>/<chapter>/index.mdx`
+  - `content/courses/<course>/<chapter>/<section>.mdx`
+- Daily issues should use `YYYY-MM-DD.mdx` for both the file name and the `slug`.
+
 ## Base frontmatter
 
 ```yaml
@@ -32,8 +42,8 @@ cover:
 ```yaml
 title: AI Daily Title
 summary: Brief issue summary.
-slug: 2026-03-14
-date: 2026-03-14
+slug: "2026-03-14"
+date: "2026-03-14"
 tags:
   - agents
 issue: 145
@@ -115,3 +125,35 @@ slug: about
 ## Daily agent publishing
 
 The external daily-report agent should write a new `content/daily/YYYY-MM-DD.mdx` file and commit it directly. The website does not need a database or webhook for `v1`.
+
+Suggested daily issue template:
+
+```md
+---
+title: 今日 AI 速记：这里写当日标题
+summary: 这里写当日摘要。
+slug: "2026-03-14"
+date: "2026-03-14"
+tags:
+  - agents
+  - tooling
+issue: 145
+topic: agent systems
+sources:
+  - https://example.com/source-a
+  - https://example.com/source-b
+status: published
+---
+
+## 今日要闻
+
+写当日最值得关注的变化。
+
+## 模型演进
+
+写值得记录的模型、工具或工程信号。
+
+## 简短判断
+
+写你对这期内容的短判断。
+```
