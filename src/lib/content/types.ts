@@ -82,9 +82,27 @@ type WithBody<T> = T & {
 
 export type PostEntry = WithBody<z.infer<typeof postSchema>>;
 export type DailyIssue = WithBody<z.infer<typeof dailySchema>>;
+export type CourseReference = {
+  slug: string;
+  title: string;
+};
+export type CourseChapterReference = {
+  slug: string;
+  title: string;
+};
+export type CourseLessonLink = {
+  courseSlug: string;
+  chapterSlug: string;
+  slug: string;
+  title: string;
+};
 export type CourseSection = WithBody<z.infer<typeof courseSectionSchema>> & {
   courseSlug: string;
   chapterSlug: string;
+  course: CourseReference;
+  chapter: CourseChapterReference;
+  prev: CourseLessonLink | null;
+  next: CourseLessonLink | null;
 };
 export type CourseChapter = WithBody<z.infer<typeof courseChapterSchema>> & {
   courseSlug: string;

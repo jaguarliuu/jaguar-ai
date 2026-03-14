@@ -6,11 +6,39 @@ import {
   courseSectionSchema,
   type Course,
   type CourseChapter,
+  type CourseLessonLink,
+  type CourseReference,
   type CourseSection,
 } from "./types";
 import { contentPath, listContentFiles, readValidatedMdx, sortByOrder } from "./shared";
 
-async function loadSections(courseSlug: string, chapterSlug: string): Promise<CourseSection[]> {
+function toLessonLink(section: CourseSection): CourseLessonLink {
+  return {
+    courseSlug: section.courseSlug,
+    chapterSlug: section.chapterSlug,
+    slug: section.slug,
+    title: section.title,
+  };
+}
+
+function attachLessonNeighbors(chapters: CourseChapter[]) {
+  const orderedSections = chapters.flatMap((chapter) => chapter.sections);
+
+  orderedSections.forEach((section, index) => {
+    section.prev = index > 0 ? toLessonLink(orderedSections[index - 1]) : null;
+    section.next =
+      index < orderedSections.length - 1 ? toLessonLink(orderedSections[index + 1]) : null;
+  });
+
+  return chapters;
+}
+
+async function loadSections(
+  course: CourseReference,
+  chapter: { slug: string; title: string },
+): Promise<CourseSection[]> {
+  const { slug: courseSlug } = course;
+  const { slug: chapterSlug } = chapter;
   const sectionFiles = await listContentFiles(`courses/${courseSlug}/${chapterSlug}/*.mdx`);
   const filteredSectionFiles = sectionFiles.filter((filePath) => path.basename(filePath) !== "index.mdx");
 
@@ -23,6 +51,10 @@ async function loadSections(courseSlug: string, chapterSlug: string): Promise<Co
         body,
         courseSlug,
         chapterSlug,
+        course,
+        chapter,
+        prev: null,
+        next: null,
       };
     }),
   );
@@ -30,10 +62,14 @@ async function loadSections(courseSlug: string, chapterSlug: string): Promise<Co
   return sortByOrder(sections);
 }
 
-async function loadChapter(courseSlug: string, chapterSlug: string): Promise<CourseChapter> {
+async function loadChapter(course: CourseReference, chapterSlug: string): Promise<CourseChapter> {
+  const { slug: courseSlug } = course;
   const chapterIndexPath = contentPath("courses", courseSlug, chapterSlug, "index.mdx");
   const { body, frontmatter } = await readValidatedMdx(chapterIndexPath, courseChapterSchema);
-  const sections = await loadSections(courseSlug, chapterSlug);
+  const sections = await loadSections(course, {
+    slug: frontmatter.slug,
+    title: frontmatter.title,
+  });
 
   return {
     ...frontmatter,
@@ -48,12 +84,16 @@ async function loadCourse(courseSlug: string): Promise<Course> {
   const { body, frontmatter } = await readValidatedMdx(courseIndexPath, courseSchema);
   const entries = await readdir(contentPath("courses", courseSlug), { withFileTypes: true });
   const chapterSlugs = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  const chapters = await Promise.all(chapterSlugs.map((chapterSlug) => loadChapter(courseSlug, chapterSlug)));
+  const courseRef = {
+    slug: frontmatter.slug,
+    title: frontmatter.title,
+  };
+  const chapters = await Promise.all(chapterSlugs.map((chapterSlug) => loadChapter(courseRef, chapterSlug)));
 
   return {
     ...frontmatter,
     body,
-    chapters: sortByOrder(chapters),
+    chapters: attachLessonNeighbors(sortByOrder(chapters)),
   };
 }
 
@@ -90,4 +130,14 @@ export async function getCourseSectionBySlug(
   }
 
   return chapter.sections.find((entry) => entry.slug === sectionSlug) ?? null;
+}
+
+export async function getCourseChapterBySlug(courseSlug: string, chapterSlug: string) {
+  const course = await getCourseBySlug(courseSlug);
+
+  if (!course) {
+    return null;
+  }
+
+  return course.chapters.find((entry) => entry.slug === chapterSlug) ?? null;
 }
