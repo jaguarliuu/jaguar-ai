@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --text: #111111;
+  --muted: #5f5f5a;
+  --line: #d8d8d2;
+  --line-strong: #b8b8b0;
+  --soft: #efefe9;
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-surface: var(--surface);
+  --color-foreground: var(--text);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-soft: var(--soft);
+  --font-sans: "Noto Sans SC", system-ui, sans-serif;
+  --font-serif: "Noto Serif SC", serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+html {
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.jaguarai-app {
+  min-height: 100vh;
+  font-family: var(--font-sans);
+}

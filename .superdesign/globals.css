@@ -1,0 +1,42 @@
+:root {
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --text: #111111;
+  --muted: #5f5f5a;
+  --line: #d8d8d2;
+  --line-strong: #b8b8b0;
+  --soft: #efefe9;
+
+  --content-max: 760px;
+  --page-max: 1280px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.hairline {
+  border-color: var(--line);
+}
+
+.surface {
+  background: var(--surface);
+}
+
+.muted {
+  color: var(--muted);
+}
