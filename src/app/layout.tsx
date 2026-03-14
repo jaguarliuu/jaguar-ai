@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PageFrame } from "@/components/site/page-frame";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -16,7 +17,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body className="jaguarai-app">{children}</body>
+      <body className="jaguarai-app">
+        <PageFrame>{children}</PageFrame>
+      </body>
     </html>
   );
 }
