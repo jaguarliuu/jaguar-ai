@@ -1,0 +1,17 @@
+---
+title: 构建稳定的 Agent 工作流，不只是把 Prompt 串起来
+summary: 从任务分解、上下文治理到可观测性，梳理 AI Agent 从玩具到可维护系统的关键结构。
+slug: building-agent-workflows
+date: 2026-03-12
+tags:
+  - agents
+  - engineering
+status: published
+cover:
+---
+
+AI Agent 真正的问题从来不是“能不能跑起来”，而是“能不能稳定地跑下去”。
+
+当一个 Agent 进入真实工作流，它会立刻暴露三类问题：任务边界不清、上下文失控、结果无法审计。解决这些问题的方式，不是继续堆 Prompt，而是把 Agent 当成软件系统来设计。
+
+这意味着你要关注任务拆解、输入输出契约、状态回收以及失败重试，而不是只盯着单轮回答质量。
