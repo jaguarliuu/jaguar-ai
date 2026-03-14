@@ -344,3 +344,33 @@ Current preview drafts:
 - About: `https://p.superdesign.dev/draft/c13e2b6f-3edc-455a-945d-7d8527e3db84`
 
 These drafts are the visual baseline for implementation unless replaced by later approved iterations.
+
+## Implementation Complete
+
+As of 2026-03-14, the `v1` site foundations are implemented in the repository on branch `codex/jaguarai-v1`.
+
+Implemented route structure:
+
+- `/`
+- `/posts`
+- `/posts/[slug]`
+- `/daily`
+- `/daily/[slug]`
+- `/courses`
+- `/courses/[courseSlug]`
+- `/courses/[courseSlug]/[chapterSlug]`
+- `/courses/[courseSlug]/[chapterSlug]/[sectionSlug]`
+- `/projects`
+- `/projects/[slug]`
+- `/about`
+- `/lab`
+- `/sitemap.xml`
+- `/robots.txt`
+
+Implementation notes:
+
+- The homepage follows the approved monochrome editorial-tech direction with a Chinese hero and equal-weight entrances for `Posts`, `Daily`, and `Courses`.
+- `Daily` content is loaded directly from `content/daily/` and is ready for the external scheduled agent to publish by Git commits.
+- `Courses` ship with nested static routes, chapter/lesson navigation, previous-next paging, desktop sidebar navigation, and desktop table of contents.
+- `Projects`, `About`, and the reserved `Lab` page are all statically generated from local MDX content.
+- `sitemap.xml`, `robots.txt`, and a custom `not-found` page are included in the `v1` foundation.
