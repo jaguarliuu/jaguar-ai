@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import fg from "fast-glob";
 import matter from "gray-matter";
@@ -12,6 +12,21 @@ export async function listContentFiles(patterns: string | string[]) {
     absolute: true,
     onlyFiles: true,
   });
+}
+
+export async function resolveContentFile(basePath: string) {
+  const candidates = path.extname(basePath) ? [basePath] : [`${basePath}.mdx`, `${basePath}.md`];
+
+  for (const candidate of candidates) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+
+  throw new Error(`Content file not found for ${basePath}`);
 }
 
 export async function readValidatedMdx<TSchema extends z.ZodTypeAny>(

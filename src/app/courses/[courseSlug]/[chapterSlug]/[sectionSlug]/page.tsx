@@ -115,9 +115,10 @@ export default async function CourseSectionPage({ params }: CourseSectionPagePro
           </div>
         </div>
 
-        <div className="hidden xl:block">
-          <ContentTableOfContents items={tocItems} />
-        </div>
+        <ContentTableOfContents
+          className="hidden xl:block xl:sticky xl:top-24 xl:self-start"
+          items={tocItems}
+        />
       </div>
     </Container>
   );

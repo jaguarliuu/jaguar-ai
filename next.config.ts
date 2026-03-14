@@ -1,5 +1,3 @@
-import type { NextConfig } from "next";
+import { createNextConfig } from "./src/lib/site-config";
 
-const nextConfig: NextConfig = {};
-
-export default nextConfig;
+export default createNextConfig(process.env);

@@ -1,12 +1,11 @@
-export const DEFAULT_SITE_URL = "https://jaguar-ai.vercel.app";
+import { DEFAULT_SITE_URL, resolveSiteConfig, toAbsoluteUrl } from "@/lib/site-config";
 
 export function getSiteUrl() {
-  const url = process.env.NEXT_PUBLIC_SITE_URL ?? process.env.SITE_URL ?? DEFAULT_SITE_URL;
-  return url.endsWith("/") ? url.slice(0, -1) : url;
+  return resolveSiteConfig(process.env).siteUrl ?? DEFAULT_SITE_URL;
 }
 
 export function absoluteUrl(path: string) {
-  return new URL(path, `${getSiteUrl()}/`).toString();
+  return toAbsoluteUrl(getSiteUrl(), path);
 }
 
 export function buildPageTitle(title?: string) {

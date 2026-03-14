@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { BackToTopButton } from "./back-to-top-button";
 import { SiteFooter } from "./footer";
 import { SiteHeader } from "./header";
 
@@ -8,6 +9,7 @@ export function PageFrame({ children }: { children: ReactNode }) {
       <SiteHeader />
       <main className="flex-1">{children}</main>
       <SiteFooter />
+      <BackToTopButton />
     </div>
   );
 }

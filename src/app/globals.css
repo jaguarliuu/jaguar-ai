@@ -26,6 +26,7 @@
 html {
   background: var(--bg);
   color: var(--text);
+  scroll-behavior: smooth;
 }
 
 body {
@@ -51,4 +52,65 @@ a {
 ::selection {
   background: var(--text);
   color: var(--bg);
+}
+
+.jaguar-prose [data-rehype-pretty-code-figure] {
+  margin: 1.5rem 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: #fbfbf8;
+  box-shadow: 0 10px 30px rgb(17 17 17 / 0.03);
+}
+
+.jaguar-prose :not(pre) > code {
+  border-radius: 6px;
+  background: var(--soft);
+  padding: 0.15rem 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.jaguar-prose [data-rehype-pretty-code-title] {
+  border-bottom: 1px solid var(--line);
+  background: var(--soft);
+  padding: 0.5rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.jaguar-prose [data-rehype-pretty-code-figure] pre {
+  margin: 0;
+  padding: 0.2rem 0;
+  background: transparent;
+}
+
+.jaguar-prose [data-rehype-pretty-code-figure] code {
+  display: grid;
+  min-width: 100%;
+  gap: 0;
+  padding: 1rem 0;
+  background: transparent;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.jaguar-prose [data-rehype-pretty-code-figure] [data-line] {
+  display: inline-block;
+  min-height: 1.5rem;
+  width: 100%;
+  padding: 0 1rem;
+}
+
+.jaguar-prose [data-rehype-pretty-code-figure] [data-highlighted-line] {
+  background: rgb(17 17 17 / 0.04);
+}
+
+.jaguar-prose [data-rehype-pretty-code-figure] [data-highlighted-chars] {
+  padding: 0 0.25rem;
+  border-radius: 2px;
+  background: rgb(17 17 17 / 0.06);
 }

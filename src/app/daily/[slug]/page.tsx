@@ -60,6 +60,7 @@ export default async function DailyDetailPage({ params }: DailyDetailPageProps) 
         { label: "Sources", value: issue.sources.length ? `${issue.sources.length} links` : "None" },
       ]}
       tocItems={buildTableOfContents(issue.body)}
+      showToc={false}
     >
       {rendered.content}
     </DetailShell>

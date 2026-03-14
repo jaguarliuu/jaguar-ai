@@ -11,5 +11,6 @@ describe("RootLayout", () => {
 
     expect(html).toContain('lang="zh-CN"');
     expect(html).toContain("jaguarai-app");
+    expect(html).toContain("Back to top");
   });
 });

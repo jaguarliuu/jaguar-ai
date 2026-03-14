@@ -11,6 +11,7 @@ type DetailShellProps = {
   summary: string;
   metadata: MetadataStripItem[];
   tocItems: TocItem[];
+  showToc?: boolean;
   children: ReactNode;
 };
 
@@ -20,8 +21,11 @@ export function DetailShell({
   summary,
   metadata,
   tocItems,
+  showToc = true,
   children,
 }: DetailShellProps) {
+  const shouldRenderToc = showToc && tocItems.length > 0;
+
   return (
     <Container className="py-14 md:py-20">
       <div className="max-w-4xl">
@@ -36,13 +40,20 @@ export function DetailShell({
         <MetadataStrip items={metadata} />
       </div>
 
-      <div className="mt-10 grid gap-10 xl:grid-cols-[minmax(0,1fr)_240px] xl:items-start">
+      <div
+        className={`mt-10 grid gap-10 xl:items-start ${
+          shouldRenderToc ? "xl:grid-cols-[minmax(0,1fr)_240px]" : ""
+        }`}
+      >
         <div className="min-w-0">
           <Prose>{children}</Prose>
         </div>
-        <div className="hidden xl:block">
-          <ContentTableOfContents items={tocItems} />
-        </div>
+        {shouldRenderToc ? (
+          <ContentTableOfContents
+            className="hidden xl:block xl:sticky xl:top-24 xl:self-start"
+            items={tocItems}
+          />
+        ) : null}
       </div>
     </Container>
   );

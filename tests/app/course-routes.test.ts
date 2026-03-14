@@ -3,18 +3,18 @@ import { getCourseBySlug } from "@/lib/content/courses";
 
 describe("course routes", () => {
   it("provides previous and next lesson context", async () => {
-    const course = await getCourseBySlug("prompt-engineering");
+    const course = await getCourseBySlug("miniclaw");
     const firstSection = course?.chapters[0].sections[0];
 
-    expect(firstSection?.next?.slug).toBe("zero-shot-and-few-shot");
+    expect(firstSection?.next?.slug).toBe("docker-compose");
     expect(firstSection?.prev).toBeNull();
   });
 
   it("exposes nested static params for lessons", async () => {
     expect(await generateSectionParams()).toContainEqual({
-      courseSlug: "prompt-engineering",
-      chapterSlug: "foundations",
-      sectionSlug: "what-is-prompt-engineering",
+      courseSlug: "miniclaw",
+      chapterSlug: "chapter-03",
+      sectionSlug: "dev-env",
     });
   });
 });

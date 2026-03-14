@@ -10,3 +10,4 @@ build/
 .tmp-cna-test/
 cna-template/
 cna-test-nonempty/
+miniclaw/

@@ -1,6 +1,5 @@
 import type { AnchorHTMLAttributes, HTMLAttributes } from "react";
-import { Prose } from "@/components/content/prose";
-
+import { CodeFigure } from "./code-figure";
 function Heading({
   as: Tag,
   className,
@@ -28,7 +27,6 @@ function Anchor({ className, href, rel, target, ...props }: AnchorHTMLAttributes
 }
 
 export const mdxComponents = {
-  wrapper: Prose,
   h1: (props: HTMLAttributes<HTMLHeadingElement>) => (
     <Heading as="h1" className="scroll-mt-28" {...props} />
   ),
@@ -38,5 +36,6 @@ export const mdxComponents = {
   h3: (props: HTMLAttributes<HTMLHeadingElement>) => (
     <Heading as="h3" className="scroll-mt-28" {...props} />
   ),
+  figure: (props: HTMLAttributes<HTMLElement>) => <CodeFigure {...props} />,
   a: Anchor,
 };

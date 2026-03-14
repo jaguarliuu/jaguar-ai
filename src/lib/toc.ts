@@ -18,13 +18,20 @@ export function slugifyHeading(value: string) {
 }
 
 export function buildTableOfContents(source: string): TocItem[] {
+  const slugCounts = new Map<string, number>();
+
   return [...source.matchAll(headingPattern)].map((match) => {
     const depth = match[1] === "##" ? 2 : 3;
     const title = match[2].trim();
+    const baseSlug = slugifyHeading(title);
+    const duplicateCount = slugCounts.get(baseSlug) ?? 0;
+    const slug = duplicateCount === 0 ? baseSlug : `${baseSlug}-${duplicateCount}`;
+
+    slugCounts.set(baseSlug, duplicateCount + 1);
 
     return {
       depth,
-      slug: slugifyHeading(title),
+      slug,
       title,
     };
   });
