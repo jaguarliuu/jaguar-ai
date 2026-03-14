@@ -6,6 +6,7 @@ out/
 build/
 .DS_Store
 *.log
+*.tsbuildinfo
 .tmp-cna-test/
 cna-template/
 cna-test-nonempty/
