@@ -60,42 +60,293 @@ for (int i = 0; i < maxRetries; i++) {
 
 ---
 
-### 先把 `Retry.backoff(...)` 翻译成人话
+### 先看重试是接到哪里的
 
-看到这段代码时，很多同学会卡住：
+这一节我们不做“代码讲评”，直接按真正写代码的顺序往下走。
+
+目标非常明确：
+
+> 先把重试入口接上，再把重试规则一行一行补进去。
+
+---
+
+### 第一步：先在调用点留出重试入口
+
+我们已经有了上一节的异常收口能力，所以现在先不要急着写 `Retry.backoff(...)`。
+
+第一步更简单：先决定重试要挂在哪里。
+
+先看 `chat()`：
+
+```java
+private Mono<LlmResponse> executeChat(LlmRequest request) {
+    Mono<LlmResponse> pipeline = webClient.post()
+            .uri("/chat/completions")
+            .bodyValue(apiRequest)
+            .exchangeToMono(this::readChatBody)
+            .timeout(Duration.ofSeconds(properties.getTimeout()))
+            .map(this::parseResponse)
+            .onErrorMap(this::asLlmException);
+
+    return applyRetry(pipeline, "chat");
+}
+```
+
+这里你先只做一件事：
+
+- 把“原始请求流水线”保存到 `pipeline`
+- 在最后一行新增 `applyRetry(pipeline, "chat")`
+
+再看 `stream()`：
+
+```java
+Flux<LlmChunk> pipeline = webClient.post()
+        .uri("/chat/completions")
+        .bodyValue(apiRequest)
+        .accept(MediaType.TEXT_EVENT_STREAM)
+        .exchangeToFlux(this::readStreamBody)
+        .timeout(Duration.ofSeconds(properties.getTimeout()))
+        .filter(line -> !line.isBlank())
+        .flatMap(this::parseSseChunk)
+        .onErrorMap(this::asLlmException);
+
+return applyRetry(pipeline, "stream");
+```
+
+做到这里，你先建立一个直觉：
+
+- `pipeline` 代表“还没接重试之前的请求链路”
+- `applyRetry(...)` 代表“在最后统一补上一层重试能力”
+
+这一步还不需要知道重试规则细节，只需要先把接入点卡准。
+
+---
+
+### 第二步：先把 `applyRetry(...)` 建出来，哪怕先什么都不做
+
+调用点已经有了，下一步就是把 `applyRetry(...)` 这个方法先建出来。
+
+一开始你甚至可以先写最朴素的版本：
+
+```java
+private <T> Mono<T> applyRetry(Mono<T> pipeline, String operation) {
+    return pipeline;
+}
+
+private <T> Flux<T> applyRetry(Flux<T> pipeline, String operation) {
+    return pipeline;
+}
+```
+
+这个版本什么都不做，但它有一个很重要的价值：
+
+> 先把“重试入口”这层抽象立住。
+
+也就是说，从现在开始：
+
+- `chat()` 不直接关心重试实现细节
+- `stream()` 也不直接关心重试实现细节
+- 两条链路统一交给 `applyRetry(...)`
+
+课程里这样写，读者更容易理解我们是在“先搭骨架，再填实现”。
+
+---
+
+### 第三步：先补一个最小判断，支持“关闭重试”
+
+骨架已经有了，先不要立刻写 `retryWhen(...)`。
+
+我们先补一个最小判断：
+
+```java
+private <T> Mono<T> applyRetry(Mono<T> pipeline, String operation) {
+    if (maxRetries() <= 0) {
+        return pipeline;
+    }
+    return pipeline;
+}
+
+private <T> Flux<T> applyRetry(Flux<T> pipeline, String operation) {
+    if (maxRetries() <= 0) {
+        return pipeline;
+    }
+    return pipeline;
+}
+```
+
+这一步的意义很简单：
+
+- 如果配置里把重试次数设成 `0`
+- 客户端就直接走原始链路
+- 后面即使补上 `retryWhen(...)`，这里也已经有了清晰边界
+
+课程里按这个顺序写，读者更容易接受，因为每一步都只新增一个很小的能力。
+
+---
+
+### 第四步：现在再接上 `retryWhen(...)`
+
+骨架有了，现在再把真正逻辑补进去：
+
+```java
+private <T> Mono<T> applyRetry(Mono<T> pipeline, String operation) {
+    if (maxRetries() <= 0) {
+        return pipeline;
+    }
+    return pipeline.retryWhen(buildRetrySpec(operation));
+}
+
+private <T> Flux<T> applyRetry(Flux<T> pipeline, String operation) {
+    if (maxRetries() <= 0) {
+        return pipeline;
+    }
+    return pipeline.retryWhen(buildRetrySpec(operation));
+}
+```
+
+这时很多 Java8 同学会冒出一个疑问：
+
+> 为什么返回值后面还能继续挂方法？这是不是 AOP？
+
+这里一定要当场解释清楚：
+
+> 这不是 AOP。  
+> 这只是普通的 Java 链式调用，因为 `pipeline` 本身就是一个 `Mono` 或 `Flux` 对象。
+
+最普通的类比是：
+
+```java
+String result = " hello ".trim().toUpperCase();
+```
+
+这里没有任何 AOP，只是：
+
+1. `trim()` 返回了一个新的 `String`
+2. 返回值仍然是对象
+3. 所以你可以继续调用 `.toUpperCase()`
+
+Reactor 完全一样。
+
+比如：
+
+- `timeout(...)` 返回一个新的 `Mono`
+- `map(...)` 返回一个新的 `Mono`
+- `onErrorMap(...)` 返回一个新的 `Mono`
+- `retryWhen(...)` 也返回一个新的 `Mono`
+
+如果你把这一行展开来看：
+
+```java
+Mono<T> retried = pipeline.retryWhen(buildRetrySpec(operation));
+return retried;
+```
+
+就不神秘了。
+
+这里不是“框架偷偷织入逻辑”，而是：
+
+> 你拿着一个 `Mono` 对象，显式调用它的实例方法，得到一个带重试能力的新 `Mono`。
+
+---
+
+### 第五步：先把 `buildRetrySpec(...)` 写到最小可用
+
+现在 `applyRetry(...)` 已经有了：
 
 ```java
 return pipeline.retryWhen(buildRetrySpec(operation));
 ```
 
-如果你只熟悉命令式代码，可以先这样翻译：
+所以下一个问题自然变成：
+
+> `buildRetrySpec(operation)` 到底先返回什么？
+
+先不要一口气把整段实现写满，先写到最小可用：
 
 ```java
-RetryPolicy retryPolicy = buildRetryPolicy(operation);
-return runWithRetry(pipeline, retryPolicy);
+private RetryBackoffSpec buildRetrySpec(String operation) {
+    return Retry.backoff(maxRetries(), Duration.ofMillis(minBackoffMillis()));
+}
 ```
 
-也就是说，`buildRetrySpec(...)` 不是“已经开始重试”。
+这一行先完成两件事：
 
-它真正做的是：
+- 指定最多重试几次
+- 指定最小退避时间从哪里开始
 
-> 先定义一份规则，然后把规则挂到响应式流水线上。
-
-这份规则里会说明：
-
-- 最多重试几次
-- 每次等待多久
-- 哪些错误允许重试
-- 每次重试前做什么
-- 重试耗尽后把什么异常抛出去
-
-这就是理解 Reactor Retry 的第一把钥匙。
+也就是说，到这里你已经不是“没有重试”，而是已经有了一版最基础的指数退避重试。
 
 ---
 
-### Java8 视角看 `buildRetrySpec`
+### 第六步：继续往后补 `.maxBackoff(...)`
 
-当前代码里的真实实现如下：
+有了最小版本之后，下一行自然就是给指数退避加上限：
+
+```java
+private RetryBackoffSpec buildRetrySpec(String operation) {
+    return Retry.backoff(maxRetries(), Duration.ofMillis(minBackoffMillis()))
+            .maxBackoff(Duration.ofMillis(maxBackoffMillis()));
+}
+```
+
+为什么这一步要紧跟在 `Retry.backoff(...)` 后面？
+
+因为你刚刚引入了“指数增长”，那马上就要回答另一个问题：
+
+> 最多允许它增长到哪里？
+
+这就是课程里“写一行，解释这一行解决了什么问题”的节奏。
+
+---
+
+### 第七步：再补 `.jitter(...)`
+
+上限有了，下一步补随机扰动：
+
+```java
+private RetryBackoffSpec buildRetrySpec(String operation) {
+    return Retry.backoff(maxRetries(), Duration.ofMillis(minBackoffMillis()))
+            .maxBackoff(Duration.ofMillis(maxBackoffMillis()))
+            .jitter(RETRY_JITTER);
+}
+```
+
+这一步先不用讲太深，先让学生知道：
+
+- 指数退避解决“节奏越来越慢”
+- `jitter` 解决“别让所有请求同一时刻一起重试”
+
+先把代码接上，后面再展开讲原理。
+
+---
+
+### 第八步：补 `.filter(...)`，只重试该重试的错误
+
+现在再补上最关键的一行：
+
+```java
+private RetryBackoffSpec buildRetrySpec(String operation) {
+    return Retry.backoff(maxRetries(), Duration.ofMillis(minBackoffMillis()))
+            .maxBackoff(Duration.ofMillis(maxBackoffMillis()))
+            .jitter(RETRY_JITTER)
+            .filter(this::isRetryableFailure);
+}
+```
+
+到这里，重试机制才真正和上一节的 `LlmException.retryable` 连上。
+
+也就是说：
+
+- `401`、`403`、`400` 不会进入重试
+- `429`、`TIMEOUT`、`NETWORK`、`SERVER_ERROR` 才有资格重试
+
+这一步写完，整个设计才真正闭环。
+
+---
+
+### 第九步：补日志回调和“重试耗尽”处理
+
+最后再把观察性和失败出口补齐：
 
 ```java
 private RetryBackoffSpec buildRetrySpec(String operation) {
@@ -117,24 +368,69 @@ private RetryBackoffSpec buildRetrySpec(String operation) {
 }
 ```
 
-如果把它拆成 Java8 更容易接受的心智模型，大致就是下面这段伪代码：
+到这里，`buildRetrySpec(...)` 才算真正写完。
 
-```java
-RetryPolicy retryPolicy = new RetryPolicy();
-retryPolicy.setMaxRetries(maxRetries());
-retryPolicy.setMinBackoff(minBackoffMillis());
-retryPolicy.setMaxBackoff(maxBackoffMillis());
-retryPolicy.setJitter(RETRY_JITTER);
-retryPolicy.setRetryablePredicate(this::isRetryableFailure);
-retryPolicy.setBeforeRetryLogger(...);
-retryPolicy.setExhaustedHandler(lastFailure -> lastFailure);
-```
+你会发现整段代码不是一上来就“背下来”的，而是按下面顺序自然长出来的：
 
-Reactor 只是把这套规则写成了链式 API，本质并没有改变。
+1. 先有接入点
+2. 再有空骨架
+3. 再有关闭重试的边界
+4. 再接上 `retryWhen(...)`
+5. 再从 `Retry.backoff(...)` 开始一行一行补规则
+
+这才是更像真实开发、也更像真实课堂的顺序。
 
 ---
 
-### 逐行理解这段重试规则
+### 现在再回头看完整的 `buildRetrySpec(...)`
+
+前面是一行一行长出来的过程。现在代码补齐了，我们再把完整版本放在一起看：
+
+```java
+private RetryBackoffSpec buildRetrySpec(String operation) {
+    return Retry.backoff(maxRetries(), Duration.ofMillis(minBackoffMillis()))
+            .maxBackoff(Duration.ofMillis(maxBackoffMillis()))
+            .jitter(RETRY_JITTER)
+            .filter(this::isRetryableFailure)
+            .doBeforeRetry(signal -> {
+                LlmException failure = asLlmException(signal.failure());
+                log.warn("Retrying LLM {} request: attempt={}/{}, type={}, status={}, message={}",
+                        operation,
+                        signal.totalRetriesInARow() + 1,
+                        maxRetries(),
+                        failure.getErrorType(),
+                        failure.getHttpStatus(),
+                        failure.getMessage());
+            })
+            .onRetryExhaustedThrow((spec, signal) -> signal.failure());
+}
+```
+
+这时再回头看整条链，整体感就很清楚了：
+
+- `pipeline` 是原始请求流水线
+- `applyRetry(...)` 是统一接入点
+- `buildRetrySpec(...)` 是具体的重试规则
+- `retryWhen(...)` 负责把规则挂到流水线上
+
+如果翻译成更命令式的心智模型，大致就是：
+
+```java
+RetryPolicy retryPolicy = buildRetryPolicy(operation);
+return runWithRetry(pipeline, retryPolicy);
+```
+
+也就是说，`buildRetrySpec(...)` 不是“已经开始重试”。
+
+它真正做的是：
+
+> 先定义一份规则，然后把规则交给 `retryWhen(...)` 使用。
+
+到这一步，再进入逐行拆解，读者就不会觉得自己是在背 API 了。
+
+---
+
+### 再逐行拆解这段重试规则
 
 #### 1. `Retry.backoff(...)`
 
@@ -315,27 +611,15 @@ private Long retryMaxBackoffMillis = 2000L;
 
 ---
 
-### 让 `chat()` 和 `stream()` 共用一套重试能力
+### 为什么一定要同时接到 `chat()` 和 `stream()`
 
 如果重试只服务 `chat()`，那这个客户端仍然是不完整的。
 
-当前实现里，`Mono` 和 `Flux` 都经过同一个入口：
+现在你回头再看前面的 `executeChat()` 和 `stream()` 就会更清楚：
 
-```java
-private <T> Mono<T> applyRetry(Mono<T> pipeline, String operation) {
-    if (maxRetries() <= 0) {
-        return pipeline;
-    }
-    return pipeline.retryWhen(buildRetrySpec(operation));
-}
-
-private <T> Flux<T> applyRetry(Flux<T> pipeline, String operation) {
-    if (maxRetries() <= 0) {
-        return pipeline;
-    }
-    return pipeline.retryWhen(buildRetrySpec(operation));
-}
-```
+- 两条链路都会先产出自己的 `pipeline`
+- 两条链路最后都会走 `applyRetry(...)`
+- 两条链路共用同一个 `buildRetrySpec(...)`
 
 这意味着：
 

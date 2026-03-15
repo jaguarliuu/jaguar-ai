@@ -611,37 +611,176 @@ String model = resolveModel(request);
 
 ### 这次测试是怎么写的
 
-这节我们没有靠“我觉得差不多了”收工，而是先写了失败测试，再补代码。
+这一节的测试，我后来专门做了一次调整。
 
-新增测试文件：
+因为如果你只给学员看：
+
+- 默认 Provider 选路断言通过了
+- 显式 `providerId` 选路断言通过了
+
+那它当然是对的，但不够“有画面”。
+
+学员真正想看到的是：
+
+> 我把两个大模型 Provider 都配好以后，能不能真的用同一个 `LlmClient`，先调一次 chat，再切另一个 Provider 再调一次 chat；  
+> 甚至 stream 也能这样切？
+
+所以现在这节课的验证，我把它拆成了两层。
+
+---
+
+#### 第一层：单元测试，证明路由规则没有写错
+
+这一层还是保留。
+
+测试文件：
 
 `OpenAiCompatibleLlmClientMultiProviderTest.java`
 
-覆盖了两条主线。
+它解决的是“规则正确性”问题，也就是：
 
-第一条：
+1. 当请求没有显式指定 Provider 时，客户端是否会按照 `default-model` 里的 Provider 去选路
+2. 当请求指定了 `providerId`，但没有自己带 `model` 时，是否会自动拿这个 Provider 的第一个模型
 
-> 当配置了多个 Provider，且请求没有显式指定 Provider 时，客户端会根据 `default-model` 选择默认 Provider，并把默认模型发出去。
+这一层的价值不是演示，而是兜底。
 
-第二条：
+因为它用的是本地可控的测试服务，所以我们可以非常明确地断言：
 
-> 当请求显式指定 `providerId`，但没有自己传 `model` 时，客户端会选中该 Provider 的首个模型。
+- 请求到底打到了哪个 Provider
+- 请求体里的 `model` 到底是什么
 
-这两个测试跑通以后，我们再回头跑整套 backend 测试，确认：
+这类断言，真实大模型接口反而不适合做，因为真实接口返回值不稳定，但本地假服务特别适合做这种“精确核对”。
 
-- 多 Provider 新能力可用
-- 原来的可靠性测试没有被打坏
-- 原来的流式测试没有被打坏
+---
 
-验证命令：
+#### 第二层：`Spring Boot Test`，直接跑真实 Provider 切换 demo
+
+但只有第一层还不够，所以我又补了一层更适合学员看的 demo 测试：
+
+`OpenAiCompatibleLlmClientMultiProviderLiveTest.java`
+
+这个测试的思路就很直接：
+
+> 不再自己 new `LlmProperties`，也不再手工起本地假服务。  
+> 直接让 Spring Boot 把你当前 `application.yml` 和环境变量里的多 Provider 配置绑定进来，  
+> 然后从 Spring 容器里拿真实的 `OpenAiCompatibleLlmClient` 来跑。
+
+这里我还专门做了两个处理。
+
+第一个处理，是这个测试不会去启动整套数据库相关配置。  
+因为我们现在要演示的是 LLM Client，不是整个后端系统启动。
+
+所以这个 `Spring Boot Test` 只加载：
+
+- `LlmProperties`
+- `OpenAiCompatibleLlmClient`
+- `ObjectMapper`
+
+这样它既能吃到你真实的配置文件，又不会被 JPA、Flyway、PostgreSQL 拖住。
+
+第二个处理，是它不会断言“模型一定返回某个固定字符串”。
+
+这个点很重要。
+
+因为一旦你连的是真实大模型，输出天然就不是完全稳定的。  
+所以这种 demo 测试关注的是：
+
+- chat 能不能正常返回非空文本
+- stream 能不能产出非空增量，并正常结束
+- 同一个 client 能不能通过不同的 `providerId` 明确切到 `deepseek` 和 `qwen`
+
+这比写死一段固定答案，更符合真实大模型测试的特点。
+
+---
+
+#### 这个 live demo 到底演示了什么
+
+这个 `Spring Boot Test` 里我放了两个 demo。
+
+第一个 demo 是 chat：
+
+- 第一条测试显式传 `providerId=deepseek`
+- 第二条测试显式传 `providerId=qwen`
+- 两次都只发一个很短的提示词
+- 最后把两个响应打印出来
+
+这样学员一跑测试，就能直接看到类似这样的输出：
+
+```text
+[4.9 live demo] provider=deepseek chat=...
+[4.9 live demo] provider=qwen chat=...
+```
+
+第二个 demo 是 stream：
+
+- deepseek 那条测试里继续调一次 `stream()`
+- qwen 那条测试里也继续调一次 `stream()`
+- 把每次流式输出累积成完整文本
+- 最后打印结果
+
+这样学员看到的就不只是“这个布尔断言通过了”，而是：
+
+> 哦，原来 chat 能切，stream 也能切；  
+> 而且这个切换动作就是靠 `providerId` 完成的，不需要再额外维护两套 client 配置。
+
+这才是这节课真正想建立的直觉。
+
+---
+
+#### 为什么要保留两层，而不是只留 live demo
+
+这个问题你在课程里一定要讲透。
+
+因为 live demo 很适合教学，但它不适合替代全部单元测试。
+
+原因很简单：
+
+1. **真实 Provider 的输出不稳定**
+   - 适合看“能不能工作”
+   - 不适合做特别细的请求体断言
+
+2. **单元测试可控**
+   - 适合精确验证路由、模型解析、默认值覆盖
+   - 适合防回归
+
+3. **live demo 更有教学价值**
+   - 学员能直接看到切换效果
+   - 能快速建立“多 Provider 真的跑起来了”的感受
+
+所以最好的结构，不是二选一，而是：
+
+> 单元测试负责“证明你没写错”，  
+> `Spring Boot Test` 负责“让学员亲眼看到它能跑”。
+
+---
+
+#### 怎么运行这组测试
+
+如果你只想验证规则层，跑：
 
 ```bash
 ./mvnw -Dtest=OpenAiCompatibleLlmClientMultiProviderTest test
+```
+
+如果你已经在 `application.yml` 和环境变量里配置好了 `deepseek` 和 `qwen`，想直接看 chat / stream 切换 demo，跑：
+
+```bash
+./mvnw -Dtest=OpenAiCompatibleLlmClientMultiProviderLiveTest test
+```
+
+再跑完整 backend 测试：
+
+```bash
 ./mvnw test
 ./mvnw -DskipTests compile
 ```
 
-这三个命令全部通过之后，这一节的代码才有资格进入文档。
+注意，这个 live demo test 做了保护：
+
+- 在 CI 环境默认跳过
+- 如果当前 shell 里没有 `DEEPSEEK_API_KEY` 或 `QWEN_API_KEY`，对应的 demo 会自动跳过
+
+这样它既可以作为课程演示，又不会把 CI 变成“真连线上模型”的高成本测试。
 
 ---
 
