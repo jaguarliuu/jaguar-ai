@@ -1,674 +1,463 @@
 ---
-title: "第5.4节：RPC 协议设计 - Request/Response/Event 三元模型"
-summary: "设计 Request、Response、Event 三元 RPC 协议，约束实时消息格式。"
+title: "第5.4节：RPC 协议设计：Request / Event / Completed / Error"
+summary: "把 Gateway 的线上消息格式先钉住。重点不是再造一个 response，而是为流式场景设计 request、event、completed、error 四类帧。"
 slug: rpc-protocol
-date: 2026-03-14
+date: 2026-03-16
 tags:
   - course
   - miniclaw
   - rpc
+  - gateway
 order: 4
 status: published
 ---
 
-> **学习目标**：设计自定义 RPC 协议，实现请求-响应-事件的三元模型
-> **预计时长**：25 分钟
+> **学习目标**：理解为什么第五章的 RPC 协议不是 request/response 二元结构，而是 request、event、completed、error 四类帧
+> **预计时长**：30 分钟
+> **难度**：入门
 
 ---
 
-### 核心问题：如何设计统一的消息格式？
+### 5.3 做完以后，Gateway 其实还不会“说话”
 
-**真实场景**：
+上一节里，我们已经把连接和 session 的关系立住了。  
+现在 Gateway 至少知道两件事：
 
-```
-用户：发送请求 "运行 Agent"
-服务端：返回响应 "已接收，runId=xxx"
-服务端：推送事件 "Agent 开始运行"
-服务端：推送事件 "输出：你好"
-服务端：推送事件 "Agent 运行结束"
-```
+- 谁连上来了
+- 某个 session 挂在哪个 connection 下面
 
-**问题**：
-1. 如何区分请求、响应、事件？
-2. 如何关联请求和响应？
-3. 如何表示成功和失败？
+但这还不够。
+
+因为真正开始走业务以后，Gateway 还要解决另一个问题：
+
+> 同一条 WebSocket 通道里，客户端和服务端到底应该用什么格式互相说话？
+
+如果这一层不先统一，后面很快就会乱。
+
+比如 `session.create` 可能是一种 JSON 格式，`chat.send` 又是一种，服务端往回推流式结果时再来第三种。  
+刚开始你会觉得“能跑就行”，但只要方法一多，前后端都会开始靠猜。
+
+所以 5.4 这一节的任务很明确：
+
+> 不先写 router，不先写业务处理器，先把 Gateway 的线上帧格式钉住。
+
+这个顺序非常重要。  
+因为后面的 router、event bus、state machine，本质上都是建立在这套协议之上的。
 
 ---
 
-### 对比：有 vs 无统一协议
+### 为什么这里不是 request / response / event，而是四类帧
 
-**无统一协议**：
+很多同学第一次设计 WebSocket 协议时，都会自然想到三元模型：
+
+- request
+- response
+- event
+
+看起来没问题，但放到 MiniClaw 这里，会很快遇到一个尴尬点：
+
+> `chat.send` 不是一个“收到 response 就结束”的方法，它天然是流式的。
+
+我们这一章前面已经明确了：
+
+- `session.create` 这种方法，本质上是单次调用
+- `chat.send` 这种方法，本质上会持续往外推事件
+
+如果你坚持用 `response` 做统一成功返回，协议会很别扭。  
+因为对于流式请求来说，真正重要的不是“有没有某个最终 response”，而是：
+
+1. 请求发出去了没有
+2. 中间有没有持续事件
+3. 这次调用什么时候正常结束
+4. 如果失败，失败信息怎么表达
+
+所以这一节我不采用 `request / response / event`，而是直接拆成四类帧：
+
+- `request`：客户端发起调用
+- `event`：服务端中途推送事件
+- `completed`：服务端声明这次调用正常结束
+- `error`：服务端声明这次调用异常结束
+
+这个模型有一个很直接的好处：
+
+> 同步调用和流式调用终于能用同一套结束语义。
+
+比如：
+
+```text
+session.create
+request -> completed
+
+chat.send
+request -> event -> event -> event -> completed
+
+unknown method
+request -> error
+```
+
+一旦协议层这样定了，后面处理链路就会清晰很多。
+
+---
+
+### 先把两个 ID 分开：`requestId` 和 `sessionId`
+
+这一节里有两个字段必须先讲清楚，因为很多人第一次设计协议时会把它们混掉。
+
+第一个是 `requestId`。  
+它标识的是：
+
+> 这一次 RPC 调用本身。
+
+第二个是 `sessionId`。  
+它标识的是：
+
+> 这次调用归属的业务会话。
+
+这两个字段不是一回事。
+
+比如同一个 session 里，后面完全可能先后发起多次调用：
+
+```text
+session-001
+  ├─ request-101 -> chat.send
+  ├─ request-102 -> session.get
+  └─ request-103 -> chat.send
+```
+
+这时候如果你只有 `sessionId`，客户端根本没法精确知道某一帧到底属于哪次调用。  
+反过来，如果你只有 `requestId`，服务端又很难把这次调用挂回正确的业务 session。
+
+所以在当前协议里，这两个字段同时保留：
+
+- `requestId` 用来定位一次调用
+- `sessionId` 用来定位一次会话
+
+这也是为什么后面的 `event`、`completed`、`error` 都会把这两个字段继续带上。
+
+---
+
+### 第一类帧：`request`
+
+`request` 是客户端发给 Gateway 的入站帧。
+
+当前模型是：
 
 ```java
-// ❌ 每种消息格式不同
-String handleChat(String message);
-String handleToolCall(String toolName, String params);
-void pushEvent(String event);
+public class RpcRequestFrame {
+
+    private String type = "request";
+    private String requestId;
+    private String sessionId;
+    private String method;
+    private JsonNode payload;
+}
 ```
 
-**问题**：
-- 客户端需要知道每种消息的格式
-- 难以扩展新的消息类型
-- 错误处理不统一
+这里最值得注意的是三个字段：
 
-**有统一协议**：
+1. `requestId`
+   标识这次调用本身
 
-```java
-// ✅ 统一的消息格式
-RpcResponse handle(RpcRequest request);
-void push(RpcEvent event);
-```
+2. `method`
+   标识这次到底想调什么能力，比如 `session.create`、`chat.send`
 
-**好处**：
-- 统一的消息格式
-- 易于扩展
-- 错误处理统一
+3. `payload`
+   存放这次调用的参数
 
----
+你会看到 `sessionId` 也放在了 request 里。  
+这并不意味着每个 request 都必须有 `sessionId`。
 
-### 三元模型设计
+像 `session.create` 这种方法，本来就是为了创建 session，所以它可以没有 `sessionId`。  
+但像 `chat.send` 这种运行在现有会话上的方法，就必须显式带上它。
 
-#### Request（请求）
+例如，一个典型的 `chat.send` 请求会长这样：
 
-**作用**：客户端 → 服务端，请求执行某个操作
-
-**格式**：
 ```json
 {
   "type": "request",
-  "id": "req-123",
-  "method": "agent.run",
+  "requestId": "req-001",
+  "sessionId": "session-001",
+  "method": "chat.send",
   "payload": {
     "message": "你好"
   }
 }
 ```
 
-**字段说明**：
-- `type`：消息类型，固定为 `"request"`
-- `id`：请求 ID，用于关联响应
-- `method`：方法名，如 `"agent.run"`、`"session.create"`
-- `payload`：请求参数
+到这里为止，客户端到底想干什么，Gateway 已经能读明白了。
 
-#### Response（响应）
+---
 
-**作用**：服务端 → 客户端，响应请求
+### 第二类帧：`event`
 
-**成功格式**：
-```json
-{
-  "type": "response",
-  "id": "req-123",
-  "payload": {
-    "runId": "run-456"
-  }
+`event` 是服务端在处理中途主动推送的帧。
+
+它的模型是：
+
+```java
+public class RpcEventFrame {
+
+    private String type = "event";
+    private String requestId;
+    private String sessionId;
+    private String name;
+    private JsonNode payload;
 }
 ```
 
-**失败格式**：
-```json
-{
-  "type": "response",
-  "id": "req-123",
-  "error": {
-    "code": "INVALID_PARAMS",
-    "message": "缺少必要参数"
-  }
-}
-```
+这里不要把 `name` 看轻了。  
+它其实是整个事件体系的名字空间。
 
-**字段说明**：
-- `type`：消息类型，固定为 `"response"`
-- `id`：请求 ID，与请求对应
-- `payload`：响应数据（成功时）
-- `error`：错误信息（失败时）
+比如后面我们做 `chat.send` 时，就完全可以推这种事件：
 
-#### Event（事件）
+- `chat.delta`
+- `chat.reasoning`
+- `chat.tool_call`
+- `chat.tool_result`
 
-**作用**：服务端 → 客户端，主动推送
+为什么字段名不叫 `event`，而叫 `name`？
 
-**格式**：
+因为这个对象本身已经是 event 帧了。  
+`type = "event"` 负责说明“这是一条事件帧”，`name` 负责说明“这是什么事件”。
+
+这两层语义分开以后，协议会更干净。
+
+例如：
+
 ```json
 {
   "type": "event",
-  "event": "assistant.delta",
-  "runId": "run-456",
+  "requestId": "req-001",
+  "sessionId": "session-001",
+  "name": "chat.delta",
   "payload": {
     "delta": "你好"
   }
 }
 ```
 
-**字段说明**：
-- `type`：消息类型，固定为 `"event"`
-- `event`：事件名称，如 `"assistant.delta"`、`"lifecycle.start"`
-- `runId`：关联的运行 ID
-- `payload`：事件数据
+注意这里仍然保留了 `requestId`。  
+因为流式过程中，客户端最想知道的往往不是“某个 session 收到了事件”，而是“我刚才发起的那次调用，现在推回来了哪一段结果”。
 
 ---
 
-### 第一步：创建 RpcRequest
+### 第三类帧：`completed`
 
-**1.1 创建包结构**
+这一节里最关键的设计，其实就是 `completed`。
 
-```bash
-cd ~/clawd/miniclaw-test/backend/src/main/java/com/miniclaw/gateway
-mkdir -p rpc/model
-```
-
-**1.2 创建 RpcRequest**
-
-创建 `gateway/rpc/model/RpcRequest.java`：
+它的模型很简单：
 
 ```java
-package com.miniclaw.gateway.rpc.model;
+public class RpcCompletedFrame {
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-/**
- * RPC 请求消息
- * 格式: {"type":"request","id":"xxx","method":"xxx","payload":{...}}
- */
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-@JsonInclude(JsonInclude.Include.NON_NULL)
-public class RpcRequest {
-
-    /**
-     * 消息类型，固定为 "request"
-     */
-    @Builder.Default
-    private String type = "request";
-
-    /**
-     * 请求 ID，用于关联响应
-     */
-    private String id;
-
-    /**
-     * 方法名，如 "agent.run", "session.create"
-     */
-    private String method;
-
-    /**
-     * 请求参数
-     */
-    private Object payload;
+    private String type = "completed";
+    private String requestId;
+    private String sessionId;
+    private JsonNode payload;
 }
 ```
 
-**1.3 理解字段**
+为什么我们要单独造一个 `completed`，而不是继续沿用 `response`？
 
-**为什么需要 `id`？**
+因为 `completed` 表达的是一件很明确的事：
 
-**不推荐**：
-```
-客户端：发送请求
-服务端：返回响应
-→ 客户端不知道这个响应对应哪个请求
-```
+> 这次调用正常结束了。
 
-**推荐**：
-```
-客户端：发送 {"id": "req-1", "method": "A"}
-客户端：发送 {"id": "req-2", "method": "B"}
-服务端：返回 {"id": "req-2", "payload": {...}}
-服务端：返回 {"id": "req-1", "payload": {...}}
-→ 客户端根据 id 知道响应对应哪个请求
+这个语义比 `response` 更适合流式协议。
+
+对单次调用来说：
+
+```text
+request -> completed
 ```
 
----
+对流式调用来说：
 
-### 第二步：创建 RpcResponse
-
-**2.1 创建 RpcResponse**
-
-创建 `gateway/rpc/model/RpcResponse.java`：
-
-```java
-package com.miniclaw.gateway.rpc.model;
-
-import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-/**
- * RPC 响应消息
- * 格式: {"type":"response","id":"xxx","payload":{...}} 或 {"type":"response","id":"xxx","error":{...}}
- */
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-@JsonInclude(JsonInclude.Include.NON_NULL)
-public class RpcResponse {
-
-    /**
-     * 消息类型，固定为 "response"
-     */
-    @Builder.Default
-    private String type = "response";
-
-    /**
-     * 请求 ID，与请求对应
-     */
-    private String id;
-
-    /**
-     * 响应数据（成功时）
-     */
-    private Object payload;
-
-    /**
-     * 错误信息（失败时）
-     */
-    private RpcError error;
-
-    /**
-     * 创建成功响应
-     */
-    public static RpcResponse success(String id, Object payload) {
-        return RpcResponse.builder()
-                .id(id)
-                .payload(payload)
-                .build();
-    }
-
-    /**
-     * 创建错误响应
-     */
-    public static RpcResponse error(String id, String code, String message) {
-        return RpcResponse.builder()
-                .id(id)
-                .error(new RpcError(code, message))
-                .build();
-    }
-
-    /**
-     * 错误信息
-     */
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class RpcError {
-        private String code;
-        private String message;
-    }
-}
+```text
+request -> event -> event -> event -> completed
 ```
 
-**2.2 理解错误处理**
+你会发现，只要有了 `completed`，单次调用和流式调用的成功收口就统一了。  
+我们不再需要设计两套“成功返回”的思维模型。
 
-**为什么需要 `code` 和 `message`？**
+比如 `session.create` 后面完全可以这样回：
 
 ```json
-// ❌ 只有 message
 {
-  "error": {
-    "message": "缺少参数"
+  "type": "completed",
+  "requestId": "req-001",
+  "sessionId": "session-001",
+  "payload": {
+    "created": true
   }
 }
-→ 客户端只能靠字符串匹配判断错误类型
+```
 
-// ✅ 有 code 和 message
+而 `chat.send` 在一连串 `event` 结束以后，也可以用同一类帧把这次调用收住。
+
+这就是为什么第五章的协议主线里，我坚持把 `completed` 独立出来。
+
+---
+
+### 第四类帧：`error`
+
+失败路径也单独做一类帧，不混进 `completed`。
+
+当前实现是：
+
+```java
+public class RpcErrorFrame {
+
+    private String type = "error";
+    private String requestId;
+    private String sessionId;
+    private RpcErrorPayload error;
+}
+```
+
+对应的错误体是：
+
+```java
+public class RpcErrorPayload {
+
+    private String code;
+    private String message;
+}
+```
+
+这里有一个小设计点值得你记住：
+
+> `error` 帧不是把 `code`、`message` 直接摊平到顶层，而是单独包进 `error` 对象里。
+
+这样做有两个好处。
+
+第一，协议语义更清楚。  
+顶层字段仍然只负责描述这条帧是谁、属于哪次调用；错误细节放进 `error`，层次很自然。
+
+第二，后面如果要补更多错误信息，比如 `details`、`retryable`、`hint`，扩展点也留住了。
+
+例如：
+
+```json
 {
+  "type": "error",
+  "requestId": "req-001",
+  "sessionId": "session-001",
   "error": {
-    "code": "INVALID_PARAMS",
-    "message": "缺少必要参数: message"
+    "code": "METHOD_NOT_FOUND",
+    "message": "Unknown method: chat.run"
   }
 }
-→ 客户端可以根据 code 做逻辑判断
 ```
+
+这类帧一出来，客户端就知道这次调用已经失败收口，不应该再等后续 `event` 或 `completed`。
 
 ---
 
-### 第三步：创建 RpcEvent
+### 为什么 `payload` 我们用的是 `JsonNode`
 
-**3.1 创建 RpcEvent**
+这个点一定要讲，因为学员看到代码时通常会先问：
 
-创建 `gateway/rpc/model/RpcEvent.java`：
+> 为什么这里不用 `Map<String, Object>`，也不用某个具体 DTO？
+
+当前实现里，四类帧里所有可变内容都统一用 `JsonNode` 表达。
+
+原因是这样。
+
+如果你现在就为每个 `method` 建一套强类型 DTO，协议层会很快和业务层绑死。  
+比如 `session.create` 一套、`chat.send` 一套、后面工具调用再来一套，RPC 帧模型本身就不再通用了。
+
+反过来，如果你直接用 `String` 存原始 JSON，后面的 router 和 handler 又不得不重复解析字符串。
+
+`JsonNode` 正好落在中间：
+
+- 它保留了 JSON 的结构
+- 它仍然是 Jackson 原生支持的类型
+- 后面想按字段读取时，可以直接操作树节点
+
+比如测试里就是这样读的：
 
 ```java
-package com.miniclaw.gateway.rpc.model;
-
-import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-/**
- * RPC 事件消息（服务端主动推送）
- * 格式: {"type":"event","event":"xxx","runId":"xxx","payload":{...}}
- */
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-@JsonInclude(JsonInclude.Include.NON_NULL)
-public class RpcEvent {
-
-    /**
-     * 消息类型，固定为 "event"
-     */
-    @Builder.Default
-    private String type = "event";
-
-    /**
-     * 事件名称，如 "lifecycle.start", "assistant.delta"
-     */
-    private String event;
-
-    /**
-     * 关联的 runId
-     */
-    private String runId;
-
-    /**
-     * 事件数据
-     */
-    private Object payload;
-
-    /**
-     * 创建事件
-     */
-    public static RpcEvent of(String event, String runId, Object payload) {
-        return RpcEvent.builder()
-                .event(event)
-                .runId(runId)
-                .payload(payload)
-                .build();
-    }
-}
+assertEquals("hello gateway", parsed.getPayload().get("message").asText());
 ```
 
-**3.2 常见事件类型**
-
-| 事件名称 | 说明 | payload 示例 |
-|---------|------|-------------|
-| `lifecycle.start` | Agent 开始运行 | `{"agent": "SimpleAgent"}` |
-| `lifecycle.end` | Agent 运行结束 | `{"status": "success"}` |
-| `assistant.delta` | LLM 增量输出 | `{"delta": "你好"}` |
-| `tool.call` | 工具调用 | `{"tool": "calculator"}` |
-| `tool.result` | 工具结果 | `{"result": "42"}` |
+这比到处 `Map<String, Object>` 强转要稳，也比字符串二次反序列化干净。
 
 ---
 
-### 第四步：验证编译
+### 这一节真正落下来的，不是业务逻辑，而是“线上的 JSON 长什么样”
+
+5.4 这一节的代码没有去碰 router，也没有去碰 `GatewayWebSocketHandler`。  
+我刻意把范围压得很小，只做了五个模型类：
+
+- `RpcRequestFrame`
+- `RpcEventFrame`
+- `RpcCompletedFrame`
+- `RpcErrorFrame`
+- `RpcErrorPayload`
+
+然后用一组序列化测试把线上格式钉住：
+
+```text
+RpcFrameModelTest
+```
+
+这组测试验证了四件事：
+
+1. `request` 能不能正确带上 `requestId`、`sessionId`、`method`、`payload`
+2. `event` 能不能正确带上 `name`
+3. `completed` 能不能承担成功收口
+4. `error` 能不能带出 `code` 和 `message`
+
+注意，这组测试不是“测试 getter/setter”。  
+它测试的是更重要的一层：
+
+> 当对象真正被 Jackson 序列化成线上 JSON 时，格式是不是我们想要的那一份。
+
+对于协议模型来说，这就是最核心的测试。
+
+---
+
+### 学完这一节，你要记住哪几个判断
+
+这一节最重要的，不是记住类名，而是记住下面四个判断。
+
+1. WebSocket Gateway 不能只靠 request/response 思维建模，因为它天然要承载流式调用。
+
+2. 成功结束应该单独抽象成 `completed`，这样单次调用和流式调用就能共用一套结束语义。
+
+3. `requestId` 和 `sessionId` 必须分开。
+   一个标识调用，一个标识会话，谁也替代不了谁。
+
+4. 协议层的 `payload` 先保留成结构化 JSON，而不是过早绑定具体业务 DTO。
+
+这四条站稳以后，下一节的 router 才有办法在统一帧模型之上工作。
+
+---
+
+### 验证命令
+
+本节新增模型的定向验证命令：
 
 ```bash
-cd ~/clawd/miniclaw-test/backend
-./mvnw clean compile
+./mvnw.cmd "-Dtest=RpcFrameModelTest" test
 ```
+
+这次实现里，我已经先跑过这条命令，结果是：
+
+- `4` 个测试通过
+- 序列化和反序列化都符合当前协议定义
 
 ---
 
-### 第五步：创建序列化测试
+### 本节小结
 
-**5.1 创建测试类**
+- 5.4 没有继续往 handler 里写业务，而是先把 Gateway 的线上协议固定下来。
+- 当前协议不是三元模型，而是 `request`、`event`、`completed`、`error` 四类帧。
+- `completed` 是这一节的关键，它负责统一单次调用和流式调用的成功收口。
+- `requestId` 和 `sessionId` 分别承担“调用定位”和“会话定位”两种职责。
+- `payload` 统一使用 `JsonNode`，为后面的 router 和 handler 保留结构化 JSON 入口。
 
-创建 `gateway/rpc/model/RpcModelTest.java`：
+下一节，我们就可以在这套帧模型之上继续往前走了：
 
-```java
-package com.miniclaw.gateway.rpc.model;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.Test;
-
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-/**
- * 测试 RPC 消息模型序列化
- */
-class RpcModelTest {
-
-    private final ObjectMapper mapper = new ObjectMapper();
-
-    @Test
-    void testRequestSerialization() throws Exception {
-        // 准备
-        RpcRequest request = RpcRequest.builder()
-                .id("req-123")
-                .method("agent.run")
-                .payload(Map.of("message", "你好"))
-                .build();
-
-        // 序列化
-        String json = mapper.writeValueAsString(request);
-        System.out.println("Request JSON: " + json);
-
-        // 验证
-        assertTrue(json.contains("\"type\":\"request\""));
-        assertTrue(json.contains("\"id\":\"req-123\""));
-        assertTrue(json.contains("\"method\":\"agent.run\""));
-
-        // 反序列化
-        RpcRequest parsed = mapper.readValue(json, RpcRequest.class);
-        assertEquals("req-123", parsed.getId());
-        assertEquals("agent.run", parsed.getMethod());
-
-        System.out.println("✅ Request 序列化测试通过");
-    }
-
-    @Test
-    void testResponseSerialization() throws Exception {
-        // 成功响应
-        RpcResponse success = RpcResponse.success("req-123", Map.of("runId", "run-456"));
-        String successJson = mapper.writeValueAsString(success);
-        System.out.println("Success Response: " + successJson);
-
-        assertTrue(successJson.contains("\"type\":\"response\""));
-        assertTrue(successJson.contains("\"runId\":\"run-456\""));
-
-        // 错误响应
-        RpcResponse error = RpcResponse.error("req-123", "INVALID_PARAMS", "缺少参数");
-        String errorJson = mapper.writeValueAsString(error);
-        System.out.println("Error Response: " + errorJson);
-
-        assertTrue(errorJson.contains("\"code\":\"INVALID_PARAMS\""));
-        assertNull(error.getPayload());
-        assertNotNull(error.getError());
-
-        System.out.println("✅ Response 序列化测试通过");
-    }
-
-    @Test
-    void testEventSerialization() throws Exception {
-        // 准备
-        RpcEvent event = RpcEvent.of("assistant.delta", "run-456", Map.of("delta", "你好"));
-
-        // 序列化
-        String json = mapper.writeValueAsString(event);
-        System.out.println("Event JSON: " + json);
-
-        // 验证
-        assertTrue(json.contains("\"type\":\"event\""));
-        assertTrue(json.contains("\"event\":\"assistant.delta\""));
-        assertTrue(json.contains("\"runId\":\"run-456\""));
-
-        // 反序列化
-        RpcEvent parsed = mapper.readValue(json, RpcEvent.class);
-        assertEquals("assistant.delta", parsed.getEvent());
-        assertEquals("run-456", parsed.getRunId());
-
-        System.out.println("✅ Event 序列化测试通过");
-    }
-}
-```
-
-**5.2 运行测试**
-
-```bash
-./mvnw test -Dtest=RpcModelTest
-```
-
----
-
-### 本节总结：我们解决了什么问题？
-
-**核心问题**：如何设计统一的消息格式？
-
-**解决方案**：
-1. **RpcRequest**：客户端请求，带 `id` 和 `method`
-2. **RpcResponse**：服务端响应，支持成功/失败
-3. **RpcEvent**：服务端推送，带 `event` 和 `runId`
-
-**关键设计**：
-- `type` 字段区分三种消息
-- `id` 关联请求和响应
-- `error` 统一错误处理
-- `@JsonInclude` 不序列化 null 字段
-
-**学完这节，你理解了**：
-- 三元模型的作用
-- 如何设计统一的消息格式
-- JSON 序列化的最佳实践
-
----
-
-### 验证点
-
-**在继续之前，确保**：
-
-- [ ] RpcRequest 已创建
-- [ ] RpcResponse 已创建
-- [ ] RpcEvent 已创建
-- [ ] 编译通过
-- [ ] 序列化测试通过
-
----
-
-### 动手实践
-
-**任务**：实现 RPC 协议模型
-
-**步骤**：
-1. 创建 rpc/model 包
-2. 创建 RpcRequest
-3. 创建 RpcResponse
-4. 创建 RpcEvent
-5. 创建序列化测试
-6. 运行测试验证
-
-**思考题**：
-- 为什么用 `Object` 类型存储 payload？
-- 如何支持嵌套的 payload？
-
----
-
-### 自检：你真的掌握了吗？
-
-**问题 1**：`id` 字段的作用是什么？
-
-你的答案：
-```
-
-
-```
-
-参考答案：
-<details>
-<summary>点击展开</summary>
-
-**作用**：关联请求和响应
-
-**为什么需要**：
-1. **异步通信**：WebSocket 是异步的，响应可能乱序
-2. **并发请求**：客户端可能同时发送多个请求
-3. **超时处理**：根据 id 知道哪个请求超时了
-
-**示例**：
-```
-请求 1: {"id": "req-1", "method": "A"}
-请求 2: {"id": "req-2", "method": "B"}
-响应 2: {"id": "req-2", ...}  // 先返回 B 的结果
-响应 1: {"id": "req-1", ...}  // 后返回 A 的结果
-```
-
-</details>
-
----
-
-**问题 2**：为什么用 `code` 和 `message` 表示错误？
-
-你的答案：
-```
-
-
-```
-
-参考答案：
-<details>
-<summary>点击展开</summary>
-
-**原因**：机器可读 + 人类可读
-
-**code（机器可读）**：
-- 客户端可以根据 code 做逻辑判断
-- 如：`INVALID_PARAMS` → 显示输入框错误
-
-**message（人类可读）**：
-- 开发者调试
-- 用户友好的错误提示
-
-**对比**：
-```json
-// ❌ 只有 message
-{"error": "参数错误"}  // 客户端只能靠字符串匹配
-
-// ✅ code + message
-{"error": {"code": "INVALID_PARAMS", "message": "缺少参数"}}
-```
-
-</details>
-
----
-
-**问题 3**：`@JsonInclude(JsonInclude.Include.NON_NULL)` 的作用是什么？
-
-你的答案：
-```
-
-
-```
-
-参考答案：
-<details>
-<summary>点击展开</summary>
-
-**作用**：不序列化 null 字段
-
-**对比**：
-```json
-// 不使用 @JsonInclude
-{
-  "type": "response",
-  "id": "req-123",
-  "payload": null,  // 多余的 null
-  "error": null     // 多余的 null
-}
-
-// 使用 @JsonInclude
-{
-  "type": "response",
-  "id": "req-123"
-  // null 字段被省略
-}
-```
-
-**好处**：
-1. **减少传输量**：不传输无用的 null
-2. **语义清晰**：不传表示 null
-3. **兼容性好**：前端不需要判断 null
-
-</details>
+> 收到一条 `request` 以后，Gateway 到底该把它路由给谁？
