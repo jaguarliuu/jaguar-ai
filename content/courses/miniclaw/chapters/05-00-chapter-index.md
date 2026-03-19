@@ -81,7 +81,7 @@ status: updating
 - [5.2 WebSocket 网关基础配置与连接模型](/courses/miniclaw/chapter-05/websocket-config)
 - [5.3 连接模型与 SessionRegistry](/courses/miniclaw/chapter-05/connection-manager)
 - [5.4 RPC 协议设计：Request / Event / Completed / Error](/courses/miniclaw/chapter-05/rpc-protocol)
-- 5.5 RpcRouter：如何把所有能力统一路由到 Gateway（待更新）
+- [5.5 RpcRouter：如何把所有能力统一路由到 Gateway](/courses/miniclaw/chapter-05/rpc-router)
 - 5.6 如何基于发布-订阅模式实现响应式 EventBus（待更新）
 - 5.7 Session 状态机：状态管理与任务流转正确性（待更新）
 - 5.8 如何用 Reactor 模式通过 SessionLane 实现并发控制（待更新）
