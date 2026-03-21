@@ -65,7 +65,7 @@ status: updating
 ## 本章目录
 
 - [1.1 OpenClaw 现象深度解析：为什么能在极短时间内获得 10 万+ Star？](/courses/miniclaw/chapter-01/openclaw-phenomenon)
-- 1.2 Moltbook 震撼实验：120 万 AI Agent 的“社交网络”揭示了什么？（待更新）
+- [1.2 Moltbook 震撼实验：120 万 AI Agent 的“社交网络”揭示了什么？](/courses/miniclaw/chapter-01/moltbook-social-network)
 - 1.3 从“对话工具”到“数字员工”：Agent 的三次范式转变（待更新）
 - 1.4 Agent 能做什么？真实案例：自主买车、代码迁移、40 小时深度调研（待更新）
 - 1.5 Multi-Agent 协作：为什么“一群 Agent”比“一个超级 Agent”更强？（待更新）
