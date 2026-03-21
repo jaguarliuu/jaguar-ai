@@ -69,7 +69,7 @@ status: updating
 - [1.3 从“对话工具”到“数字员工”：Agent 的三次范式转变](/courses/miniclaw/chapter-01/agent-paradigm-shift)
 - [1.4 Agent 能做什么？真实案例：自主买车、代码迁移、40 小时深度调研](/courses/miniclaw/chapter-01/agent-real-world-cases)
 - [1.5 Multi-Agent 协作：为什么“一群 Agent”比“一个超级 Agent”更强？](/courses/miniclaw/chapter-01/multi-agent-collaboration)
-- 1.6 AI Agent 简史：从 ELIZA 到 OpenClaw 的 50 年演进（待更新）
+- [1.6 AI Agent 简史：从 ELIZA 到 OpenClaw 的 50 年演进](/courses/miniclaw/chapter-01/agent-history)
 - 1.7 Agent 生态全景：OpenAI、Anthropic、Google、国产厂商的布局（待更新）
 - 1.8 手写框架 vs LangChain / Spring AI：为什么要“重造轮子”？（待更新）
 - 1.9 MiniClaw 五层架构全景图：一张图看懂 Agent 系统设计（待更新）
