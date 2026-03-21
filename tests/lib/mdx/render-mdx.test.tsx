@@ -18,6 +18,14 @@ describe("renderMdx", () => {
     expect(html).toContain('data-language="ts"');
   });
 
+  it("renders mermaid fenced blocks as diagram containers", async () => {
+    const result = await renderMdx("```mermaid\nflowchart TD\nA-->B\n```");
+    const html = renderToStaticMarkup(result.content);
+
+    expect(html).toContain('data-mermaid-diagram=""');
+    expect(html).toContain("flowchart TD");
+  });
+
   it("renders course content with literal less-than text", async () => {
     const section = await getCourseSectionBySlug("miniclaw", "chapter-04", "llm-sync");
     const result = await renderMdx(section?.body ?? "");
@@ -27,11 +35,11 @@ describe("renderMdx", () => {
   });
 
   it("renders course content with inline json prose", async () => {
-    const section = await getCourseSectionBySlug("miniclaw", "chapter-04", "structured-output");
+    const section = await getCourseSectionBySlug("miniclaw", "chapter-03", "config");
     const result = await renderMdx(section?.body ?? "");
     const html = renderToStaticMarkup(result.content);
 
-    expect(html).toContain("publish_date");
+    expect(html).toContain("LLM_API_KEY");
   });
 });
 

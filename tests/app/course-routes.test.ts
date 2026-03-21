@@ -6,7 +6,8 @@ describe("course routes", () => {
     const course = await getCourseBySlug("miniclaw");
     const firstSection = course?.chapters[0].sections[0];
 
-    expect(firstSection?.next?.slug).toBe("docker-compose");
+    expect(firstSection?.slug).toBe("openclaw-phenomenon");
+    expect(firstSection?.next?.slug).toBe("dev-env");
     expect(firstSection?.prev).toBeNull();
   });
 

@@ -1,5 +1,6 @@
 import type { AnchorHTMLAttributes, HTMLAttributes } from "react";
 import { CodeFigure } from "./code-figure";
+import { MermaidDiagram } from "./mermaid-diagram";
 function Heading({
   as: Tag,
   className,
@@ -37,5 +38,6 @@ export const mdxComponents = {
     <Heading as="h3" className="scroll-mt-28" {...props} />
   ),
   figure: (props: HTMLAttributes<HTMLElement>) => <CodeFigure {...props} />,
+  MermaidDiagram,
   a: Anchor,
 };

@@ -3,6 +3,7 @@ import rehypePrettyCode from "rehype-pretty-code";
 import rehypeSlug from "rehype-slug";
 import remarkGfm from "remark-gfm";
 import { mdxComponents } from "@/components/mdx/mdx-components";
+import { rehypeMermaidDiagrams } from "./rehype-mermaid-diagrams";
 
 const CODE_SEGMENT_PATTERN = /```[\s\S]*?```|`[^`\n]+`/g;
 const prettyCodeOptions = {
@@ -34,7 +35,11 @@ export async function renderMdx(source: string) {
         parseFrontmatter: false,
         mdxOptions: {
           remarkPlugins: [remarkGfm],
-          rehypePlugins: [rehypeSlug, [rehypePrettyCode, prettyCodeOptions]],
+          rehypePlugins: [
+            rehypeSlug,
+            [rehypePrettyCode, prettyCodeOptions],
+            rehypeMermaidDiagrams,
+          ],
         },
       },
     }),

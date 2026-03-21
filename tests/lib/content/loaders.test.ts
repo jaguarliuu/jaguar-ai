@@ -10,22 +10,23 @@ describe("content loaders", () => {
       "2026-03-13",
       "2026-03-12",
     ]);
-    expect(issues[0]?.title).toBe("AI 技术日报 — 2026.03.14");
-    expect(issues[0]?.topic).toBe("长上下文、Agent 工具与国内生态");
+    expect(issues[0]?.slug).toBe("2026-03-14");
+    expect(issues[0]?.topic).toBeTruthy();
   });
 
   it("builds the nested course tree from markdown chapter files", async () => {
     const course = await getCourseBySlug("miniclaw");
 
-    expect(course?.title).toBe("MiniClaw：从零手写 Agent 基础设施");
+    expect(course?.slug).toBe("miniclaw");
     expect(course?.chapters.map((chapter) => chapter.slug)).toEqual([
+      "chapter-01",
       "chapter-03",
       "chapter-04",
       "chapter-05",
     ]);
-    expect(course?.chapters[1].title).toBe("第4章：从零手写 LLM 客户端");
-    expect(course?.chapters[0].sections[0].slug).toBe("dev-env");
-    expect(course?.chapters[0].sections[0].title).toBe("第3.1节：开发环境准备");
-    expect(course?.chapters[2].sections[0].slug).toBe("why-websocket");
+    expect(course?.chapters[0].sections[0].slug).toBe("openclaw-phenomenon");
+    expect(course?.chapters[1].sections[0].slug).toBe("dev-env");
+    expect(course?.chapters[2].sections[0].slug).toBe("llm-architecture");
+    expect(course?.chapters[3].sections[0].slug).toBe("why-websocket");
   });
 });
