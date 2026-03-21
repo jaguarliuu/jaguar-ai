@@ -70,11 +70,11 @@ status: updating
 - [1.4 Agent 能做什么？真实案例：自主买车、代码迁移、40 小时深度调研](/courses/miniclaw/chapter-01/agent-real-world-cases)
 - [1.5 Multi-Agent 协作：为什么“一群 Agent”比“一个超级 Agent”更强？](/courses/miniclaw/chapter-01/multi-agent-collaboration)
 - [1.6 AI Agent 简史：从 ELIZA 到 OpenClaw 的 50 年演进](/courses/miniclaw/chapter-01/agent-history)
-- 1.7 Agent 生态全景：OpenAI、Anthropic、Google、国产厂商的布局（待更新）
-- 1.8 手写框架 vs LangChain / Spring AI：为什么要“重造轮子”？（待更新）
-- 1.9 MiniClaw 五层架构全景图：一张图看懂 Agent 系统设计（待更新）
-- 1.10 MiniClaw 全局规划：从 MVP 到企业级的演进路线（待更新）
-- 1.11 课程学习路线图：从“使用者”到“创造者”的三阶段（待更新）
+- [1.7 Agent 生态全景：OpenAI、Anthropic、Google、国产厂商的布局](/courses/miniclaw/chapter-01/agent-ecosystem-landscape)
+- [1.8 手写框架 vs LangChain / Spring AI：为什么要“重造轮子”？](/courses/miniclaw/chapter-01/build-vs-frameworks)
+- [1.9 MiniClaw 五层架构全景图：一张图看懂 Agent 系统设计](/courses/miniclaw/chapter-01/miniclaw-five-layer-architecture)
+- [1.10 MiniClaw 全局规划：从 MVP 到企业级的演进路线](/courses/miniclaw/chapter-01/miniclaw-roadmap)
+- [1.11 课程学习路线图：从“使用者”到“创造者”的三阶段](/courses/miniclaw/chapter-01/learning-roadmap)
 
 ## 本章结果
 
