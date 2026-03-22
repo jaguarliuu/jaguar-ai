@@ -34,9 +34,9 @@ status: updating
 为了让这一章聚焦，我们先把边界明确写死：
 
 - 这一章只做 Gateway，不做 CLI
-- `session` 先采用内存态管理，不落数据库
+- 前半章先采用内存态 `session`，从 5.11 开始切入真实会话持久化
 - 不做多轮对话上下文的可靠存储
-- 不讲数据库表设计、消息持久化和历史恢复
+- 本章会开始重做会话表设计，但消息持久化和历史恢复留到后续小节
 - 最终验收方式是用 WebSocket 调试工具把 Gateway 跑通
 
 这意味着第5章的重点不是“产品功能做完”，而是：
@@ -87,6 +87,7 @@ status: updating
 - [5.8 如何用 Reactor 模式通过 SessionLane 实现并发控制](/courses/miniclaw/chapter-05/session-lane)
 - [5.9 如何构建从用户输入到 AI 回复的完整数据流](/courses/miniclaw/chapter-05/chat-send-flow)
 - [5.10 用 WebSocket 调试工具跑通完整 Gateway](/courses/miniclaw/chapter-05/websocket-debug-flow)
+- [5.11 重做真实会话表，并让 session.create 开始落库](/courses/miniclaw/chapter-05/session-schema-and-persistence)
 
 ## 核心架构
 
@@ -126,7 +127,7 @@ SessionLane           GatewayEventBus
 - 一个只聚焦 Gateway 的 WebSocket 入口层
 - 一套统一的 RPC over WebSocket 协议
 - 一个响应式的进程内 EventBus
-- 一套内存态 Session 管理与状态机约束
+- 一套从内存态过渡到持久化的 Session 管理模型
 - 一个基于 SessionLane 的同会话串行执行模型
 - 一条从 `chat.send` 到模型流式输出再回推客户端的完整数据流
 
