@@ -86,7 +86,7 @@ status: updating
 - [5.7 Session 状态机：状态管理与任务流转正确性](/courses/miniclaw/chapter-05/session-state-machine)
 - [5.8 如何用 Reactor 模式通过 SessionLane 实现并发控制](/courses/miniclaw/chapter-05/session-lane)
 - [5.9 如何构建从用户输入到 AI 回复的完整数据流](/courses/miniclaw/chapter-05/chat-send-flow)
-- 5.10 用 WebSocket 调试工具跑通完整 Gateway（待更新）
+- [5.10 用 WebSocket 调试工具跑通完整 Gateway](/courses/miniclaw/chapter-05/websocket-debug-flow)
 
 ## 核心架构
 
